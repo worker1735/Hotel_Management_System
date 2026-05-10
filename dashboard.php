@@ -8,237 +8,150 @@ if(!isset($_SESSION['user_id'])){
 }
 
 $user_id = $_SESSION['user_id'];
-
-/* USER DATA */
 $userQuery = mysqli_query($conn,"SELECT * FROM users WHERE id='$user_id'");
 $user = mysqli_fetch_assoc($userQuery);
+$email = $user['email'];
+$fullname = $user['fullname'];
 
-/* UPCOMING BOOKINGS */
-$upcomingQuery = mysqli_query($conn,"
-SELECT COUNT(*) total 
-FROM bookings 
-WHERE user_id='$user_id' 
-AND checkin >= CURDATE()
-");
-$upcoming = mysqli_fetch_assoc($upcomingQuery)['total'];
-
-/* COMPLETED BOOKINGS */
-$completedQuery = mysqli_query($conn,"
-SELECT COUNT(*) total 
-FROM bookings 
-WHERE user_id='$user_id' 
-AND checkout < CURDATE()
-");
-$completed = mysqli_fetch_assoc($completedQuery)['total'];
-
-/* TOTAL SPENT */
-$spentQuery = mysqli_query($conn,"
-SELECT SUM(total_price) total 
-FROM bookings 
-WHERE user_id='$user_id' 
-AND status='Confirmed'
-");
-$spent = mysqli_fetch_assoc($spentQuery)['total'];
-
-if($spent == ""){
-    $spent = 0;
+/* --- PAYMENT LOGIC (SANDBOX) --- */
+if(isset($_GET['pay_id']) && isset($_GET['amount'])){
+    $p_id = $_GET['pay_id'];
+    $paid_amt = $_GET['amount'];
+    
+    // Yahan hum status ko 'Paid' update kar rahe hain
+    // Aap is amount ko kisi payment table mein bhi save kar sakti hain agar zaroorat ho
+    mysqli_query($conn, "UPDATE roombook SET stat='Paid' WHERE id='$p_id' AND Email='$email'");
+    
+    header("Location: dashboard.php?msg=paid");
+    exit();
 }
 
-/* LOYALTY POINTS */
-$points = $completed * 50;
+/* --- CANCEL LOGIC --- */
+if(isset($_GET['cancel_id'])){
+    $c_id = $_GET['cancel_id'];
+    $getRoom = mysqli_query($conn, "SELECT TRoom, Bed FROM roombook WHERE id='$c_id'");
+    if(mysqli_num_rows($getRoom) > 0){
+        $rData = mysqli_fetch_assoc($getRoom);
+        $troom = $rData['TRoom'];
+        $bed = $rData['Bed'];
+        mysqli_query($conn, "UPDATE rooms SET status='Available' WHERE room_type='$troom' AND bed_size='$bed' LIMIT 1");
+        mysqli_query($conn, "DELETE FROM roombook WHERE id='$c_id' AND Email='$email'");
+    }
+    header("Location: dashboard.php");
+    exit();
+}
 
-/* NEXT BOOKING */
-$nextBooking = mysqli_query($conn,"
-SELECT bookings.*, rooms.room_name, rooms.image
-FROM bookings
-JOIN rooms ON bookings.room_id = rooms.id
-WHERE bookings.user_id='$user_id'
-AND bookings.checkin >= CURDATE()
-ORDER BY bookings.checkin ASC
-LIMIT 1
-");
+$price_logic = "(room_price + meal_price) * nodays";
+$totalQuery = mysqli_query($conn,"SELECT COUNT(*) as total FROM roombook WHERE Email='$email'");
+$total = mysqli_fetch_assoc($totalQuery)['total'];
 
-$booking = mysqli_fetch_assoc($nextBooking);
+$amountQuery = mysqli_query($conn,"SELECT SUM($price_logic) as total_bill FROM roombook WHERE Email='$email'");
+$total_bill = mysqli_fetch_assoc($amountQuery)['total_bill'] ?? 0;
+
+$allBookings = mysqli_query($conn,"SELECT *, ($price_logic) as calculated_price FROM roombook WHERE Email='$email' ORDER BY id DESC");
 ?>
 
 <!DOCTYPE html>
 <html>
 <head>
-<title>Dashboard</title>
-
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<style>
-body{
-background:#f8f9fa;
-font-family:Arial;
-}
-
-.sidebar{
-height:100vh;
-background:#0b1d35;
-color:white;
-padding:20px;
-position:fixed;
-width:220px;
-}
-
-.sidebar a{
-display:block;
-color:white;
-padding:12px;
-text-decoration:none;
-margin-bottom:8px;
-border-radius:8px;
-transition:0.3s;
-}
-
-.sidebar a:hover{
-background:#d4af37;
-}
-
-.main{
-margin-left:220px;
-padding:30px;
-}
-
-.card-box{
-border:none;
-border-radius:15px;
-box-shadow:0 0 10px rgba(0,0,0,.08);
-}
-
-.quick a{
-text-decoration:none;
-display:block;
-padding:10px;
-background:#f1f1f1;
-margin-bottom:10px;
-border-radius:8px;
-color:#000;
-}
-
-.quick a:hover{
-background:#d4af37;
-color:white;
-}
-</style>
-
+    <title>Dashboard | HotelIQ</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body{ background:#f8f9fa; }
+        .sidebar{ height:100vh; background:#2b1b0f; color:white; padding:20px; position:fixed; width:230px; }
+        .sidebar a{ display:block; color:white; padding:12px; text-decoration:none; margin-bottom:10px; border-radius:10px; }
+        .sidebar a:hover{ background:#d4af37; color:black; }
+        .main{ margin-left:230px; padding:30px; }
+        .card-box{ border:none; border-radius:18px; box-shadow:0 0 15px rgba(0,0,0,.08); background: white; }
+    </style>
 </head>
 <body>
-
 <div class="sidebar">
-
-<h3 class="text-warning">HotelIQ</h3>
-
-<a href="dashboard.php">Dashboard</a>
-<a href="rooms.php">My Bookings</a>
-<a href="profile.php">Profile</a>
-<a href="payments.php">Payments</a>
-<a href="feedback.php">Feedback</a>
-<a href="logout.php">Logout</a>
-
+    <h3>HotelIQ</h3>
+    <a href="dashboard.php" style="background:#d4af37; color:black;">Dashboard</a>
+    <a href="rooms.php">Rooms</a>
+    <a href="logout.php">Logout</a>
 </div>
 
 <div class="main">
+    <h2>Welcome, <?php echo $fullname; ?></h2>
 
-<h2>
-Welcome Back, <?php echo $user['fullname']; ?> 👋
-</h2>
+    <?php if(isset($_GET['msg']) && $_GET['msg'] == 'paid'): ?>
+        <div class="alert alert-success">Payment Successful! Status updated to Paid.</div>
+    <?php endif; ?>
 
-<div class="row mt-4">
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card card-box p-4 text-center">
+                <h6>Total Reservations</h6>
+                <h2><?php echo $total; ?></h2>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card card-box p-4 text-center">
+                <h6>Total Bill</h6>
+                <h2 style="color:#d4af37;">Rs. <?php echo number_format($total_bill, 2); ?></h2>
+            </div>
+        </div>
+    </div>
 
-<div class="col-md-3">
-<div class="card card-box p-3">
-<h6>Upcoming Bookings</h6>
-<h2><?php echo $upcoming; ?></h2>
-</div>
-</div>
-
-<div class="col-md-3">
-<div class="card card-box p-3">
-<h6>Completed Stays</h6>
-<h2><?php echo $completed; ?></h2>
-</div>
-</div>
-
-<div class="col-md-3">
-<div class="card card-box p-3">
-<h6>Total Spent</h6>
-<h2>$<?php echo $spent; ?></h2>
-</div>
-</div>
-
-<div class="col-md-3">
-<div class="card card-box p-3">
-<h6>Loyalty Points</h6>
-<h2><?php echo $points; ?></h2>
-</div>
-</div>
-
-</div>
-
-<div class="row mt-4">
-
-<div class="col-md-8">
-
-<div class="card card-box p-3">
-
-<h5>Upcoming Booking</h5>
-
-<?php if($booking){ ?>
-
-<img src="<?php echo $booking['image']; ?>" class="img-fluid rounded">
-
-<h5 class="mt-3">
-<?php echo $booking['room_name']; ?>
-</h5>
-
-<p>
-<?php echo $booking['checkin']; ?>
- -
-<?php echo $booking['checkout']; ?>
- |
-<?php echo $booking['guests']; ?> Guests
-</p>
-
-<a href="room-details.php?id=<?php echo $booking['room_id']; ?>" class="btn btn-warning">
-View Details
-</a>
-
-<?php } else { ?>
-
-<p class="text-muted mt-3">No upcoming bookings found.</p>
-
-<a href="rooms.php" class="btn btn-warning">
-Book Room
-</a>
-
-<?php } ?>
-
+    <div class="card card-box p-4 mt-4">
+        <h4>My Bookings</h4>
+        <table class="table mt-3 align-middle">
+            <thead>
+                <tr>
+                    <th>Room</th>
+                    <th>Check-In</th>
+                    <th>Price</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while($row = mysqli_fetch_assoc($allBookings)){ ?>
+                <tr>
+                    <td><?php echo $row['TRoom']; ?><br><small><?php echo $row['Bed']; ?></small></td>
+                    <td><?php echo $row['cin']; ?></td>
+                    <td>Rs. <?php echo number_format($row['calculated_price'], 2); ?></td>
+                    <td>
+                        <?php if($row['stat'] == 'Paid'): ?>
+                            <span class="badge bg-success">Paid</span>
+                        <?php else: ?>
+                            <span class="badge bg-warning text-dark"><?php echo $row['stat']; ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if($row['stat'] != 'Paid'): ?>
+                            <button onclick="payNow(<?php echo $row['id']; ?>, <?php echo $row['calculated_price']; ?>)" class="btn btn-sm btn-success">Pay Now</button>
+                            
+                            <a href="dashboard.php?cancel_id=<?php echo $row['id']; ?>" 
+                               onclick="return confirm('Cancel karein?')" 
+                               class="btn btn-sm btn-outline-danger">Cancel</a>
+                        <?php else: ?>
+                            <button class="btn btn-sm btn-secondary" disabled>Completed</button>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
-</div>
-
-<div class="col-md-4">
-
-<div class="card card-box p-3">
-
-<h5>Quick Actions</h5>
-
-<div class="quick">
-<a href="rooms.php">Book Room</a>
-<a href="payments.php">Make Payment</a>
-<a href="profile.php">Update Profile</a>
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-</div>
+<script>
+function payNow(bookingId, totalAmount) {
+    let amount = prompt("Enter payment amount (Total: Rs. " + totalAmount + "):", totalAmount);
+    
+    if (amount != null && amount != "") {
+        if (parseFloat(amount) >= totalAmount) {
+            alert("Payment of Rs. " + amount + " received! Updating status...");
+            window.location.href = "dashboard.php?pay_id=" + bookingId + "&amount=" + amount;
+        } else {
+            alert("Amount is less than total bill. Please pay full amount.");
+        }
+    }
+}
+</script>
 
 </body>
 </html>

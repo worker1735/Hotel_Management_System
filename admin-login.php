@@ -1,116 +1,123 @@
 <?php
 session_start();
-include "db.php";
+include "db.php"; // Ensure karein ke db.php mein database 'hotel_db' hi select hai
 
 $msg = "";
 
-// 🔥 If already logged in, send to dashboard
-if(isset($_SESSION['user_id']) && $_SESSION['role'] == 'admin'){
+// 1. Agar pehle se admin login hai to seedha dashboard bhejen
+if(isset($_SESSION['role']) && $_SESSION['role'] == 'admin'){
     header("Location: admin-dashboard.php");
     exit();
 }
 
 if(isset($_POST['login']))
 {
-    $email = $_POST['email'];
-    $password = $_POST['password'];
+    // Inputs ko clean karein
+    $username = mysqli_real_escape_string($conn, trim($_POST['email']));
+    $password = mysqli_real_escape_string($conn, trim($_POST['password']));
 
-    // get user by email
-    $q = mysqli_query($conn, "SELECT * FROM users WHERE email='$email'");
+    // 2. 'admin' table se data fetch karein
+    $sql = "SELECT * FROM admin WHERE username='$username'";
+    $q = mysqli_query($conn, $sql);
 
     if(mysqli_num_rows($q) > 0)
     {
-        $user = mysqli_fetch_assoc($q);
+        $admin = mysqli_fetch_assoc($q);
 
-        // simple password check (because password is stored as plain text)
-        if($password == $user['password'])
+        // 3. Password match karein (Database record: admin123)
+        if($password == $admin['password'])
         {
-            // session set
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['role'] = 'admin';
+            // Session variables set karein
+            $_SESSION['admin_id'] = $admin['id'];
+            $_SESSION['admin_user'] = $admin['username'];
+            $_SESSION['role'] = 'admin'; // Ye redirect filter ke liye zaroori hai
 
-            // redirect to dashboard
             header("Location: admin-dashboard.php");
             exit();
         }
         else{
-            $msg = "❌ Wrong Password";
+            $msg = "❌ Incorrect Password!";
         }
     }
     else{
-        $msg = "❌ User not found";
+        $msg = "❌ No Admin found with this email!";
     }
 }
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Admin Login</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<style>
-body{
-    background: linear-gradient(120deg, #1e3c72, #2a5298);
-    height:100vh;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-}
-
-.card-box{
-    width:380px;
-    background:white;
-    padding:30px;
-    border-radius:15px;
-    box-shadow:0 10px 25px rgba(0,0,0,0.3);
-}
-
-.btn-login{
-    background:#2a5298;
-    color:white;
-    width:100%;
-    border-radius:10px;
-}
-
-.btn-login:hover{
-    background:#1e3c72;
-}
-
-h3{
-    text-align:center;
-    margin-bottom:20px;
-    color:#2a5298;
-    font-weight:bold;
-}
-
-.msg{
-    text-align:center;
-    font-weight:bold;
-}
-</style>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Luxury Stay</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(120deg, #1e3c72, #2a5298);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+        }
+        .card-box {
+            width: 400px;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+        }
+        .btn-login {
+            background: #2a5298;
+            color: white;
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: bold;
+            border: none;
+            transition: 0.3s;
+        }
+        .btn-login:hover {
+            background: #1e3c72;
+            transform: translateY(-2px);
+        }
+        h3 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #2a5298;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+    </style>
 </head>
 <body>
 
 <div class="card-box">
+    <h3>Admin Portal</h3>
 
-<h3>Admin Login</h3>
+    <?php if($msg != ""): ?>
+        <div class="alert alert-danger py-2 text-center" style="font-size: 14px;">
+            <?php echo $msg; ?>
+        </div>
+    <?php endif; ?>
 
-<p class="msg text-danger"><?php echo $msg; ?></p>
+    <form method="POST" action="">
+        <div class="mb-3">
+            <label class="form-label small fw-bold">Admin Email</label>
+            <input type="email" name="email" class="form-control" placeholder="admin@gmail.com" required>
+        </div>
 
-<form method="POST">
+        <div class="mb-4">
+            <label class="form-label small fw-bold">Password</label>
+            <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+        </div>
 
-<input type="email" name="email" class="form-control mb-3" placeholder="Enter Email" required>
-
-<input type="password" name="password" class="form-control mb-3" placeholder="Enter Password" required>
-
-<button type="submit" name="login" class="btn btn-login">
-Login
-</button>
-
-</form>
-
+        <button type="submit" name="login" class="btn btn-login shadow-sm">
+            Access Dashboard
+        </button>
+    </form>
 </div>
 
 </body>

@@ -1,105 +1,47 @@
 <?php
+session_start();
 include "db.php";
-$data = mysqli_query($conn,"SELECT * FROM rooms");
 ?>
-
 <!DOCTYPE html>
 <html>
 <head>
-<title>Rooms</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<style>
-body{
-    margin:0;
-    padding:0;
-
-    /* ✅ FIXED BACKGROUND IMAGE */
-    background-image: url("https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=80");
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
-}
-
-/* dark overlay */
-.overlay{
-    background: rgba(0,0,0,0.65);
-    min-height: 100vh;
-    padding: 40px 0;
-}
-
-h2{
-    color:white;
-    font-weight:bold;
-}
-
-/* cards */
-.card{
-    border-radius:15px;
-    overflow:hidden;
-    transition:0.3s;
-}
-
-.card:hover{
-    transform: scale(1.03);
-}
-
-.card-body{
-    background:white;
-}
-
-.btn-warning{
-    font-weight:bold;
-}
-</style>
-
+    <title>Rooms | HotelIQ</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body{ background:#111; color:white; }
+        .room-card{ background:white; color:black; border-radius:15px; padding:20px; margin-bottom:20px; transition:0.3s; }
+        .room-card:hover{ transform: translateY(-5px); }
+        .btn-book{ background:#2b1b0f; color:#d4af37; text-decoration:none; padding:10px; display:block; text-align:center; border-radius:8px; font-weight:bold; }
+    </style>
 </head>
-
 <body>
+<div class="container mt-5">
+    <h2 class="text-center mb-5">Available Rooms</h2>
+    <div class="row">
+        <?php
+        // Database se sirf Available status uthao
+        $query = "SELECT * FROM rooms WHERE status = 'Available'";
+        $result = mysqli_query($conn, $query);
 
-<div class="overlay">
-
-<div class="container">
-
-<h2 class="text-center mb-5">Our Luxury Rooms</h2>
-
-<div class="row">
-
-<?php while($row=mysqli_fetch_assoc($data)){ ?>
-
-<div class="col-md-4 mb-4">
-
-<div class="card shadow">
-
-<img src="<?php echo $row['image']; ?>" height="220" style="object-fit:cover;">
-
-<div class="card-body">
-
-<h4><?php echo $row['room_name']; ?></h4>
-
-<h5 class="text-warning">
-<?php echo $row['price']; ?>/night
-</h5>
-
-<p><?php echo $row['guests']; ?></p>
-
-<a href="room-details.php?id=<?php echo $row['id']; ?>" class="btn btn-warning w-100">
-View Details
-</a>
-
+        if(mysqli_num_rows($result) > 0){
+            while($row = mysqli_fetch_assoc($result)){
+        ?>
+        <div class="col-md-4">
+            <div class="room-card">
+                <h4 class="fw-bold"><?php echo $row['room_type']; ?></h4>
+                <p>Room No: <b><?php echo $row['room_number']; ?></b></p>
+                <p>Bed: <?php echo $row['bed_size']; ?></p>
+                <p>Price: <span class="text-success fw-bold">Rs. <?php echo number_format($row['price_per_night'], 2); ?></span></p>
+                <a href="reservation.php?room_id=<?php echo $row['id']; ?>" class="btn-book">Book Now</a>
+            </div>
+        </div>
+        <?php 
+            } 
+        } else {
+            echo "<div class='text-center w-100'><h3>Koi room khali nahi hai!</h3><p>Sab booked hain ya database mein status update nahi hai.</p></div>";
+        }
+        ?>
+    </div>
 </div>
-
-</div>
-
-</div>
-
-<?php } ?>
-
-</div>
-
-</div>
-
-</div>
-
 </body>
 </html>

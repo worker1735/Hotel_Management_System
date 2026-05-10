@@ -2,297 +2,156 @@
 session_start();
 include "db.php";
 
-/* 🔒 SESSION CHECK */
+/* 🔐 ADMIN CHECK */
 if(!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin'){
     header("Location: login.php");
     exit();
 }
 
-/* 📊 LIVE DATA */
-$totalUsers = mysqli_fetch_assoc(
-mysqli_query($conn,"SELECT COUNT(*) AS total FROM users")
-)['total'];
+/* ⚡ ACTIONS */
+if(isset($_GET['action']) && isset($_GET['id'])){
+    $id = intval($_GET['id']);
+    
+    if($_GET['action'] == 'accept'){
+        mysqli_query($conn, "UPDATE roombook SET stat='Accepted' WHERE id=$id");
+    }
+    
+    if($_GET['action'] == 'reject'){
+        mysqli_query($conn, "UPDATE roombook SET stat='Rejected' WHERE id=$id");
+    }
 
-$totalBookings = mysqli_fetch_assoc(
-mysqli_query($conn,"SELECT COUNT(*) AS total FROM bookings")
-)['total'];
+    header("Location: admin-dashboard.php?msg=success");
+    exit();
+}
 
-$totalRooms = mysqli_fetch_assoc(
-mysqli_query($conn,"SELECT COUNT(*) AS total FROM rooms")
-)['total'];
+/* 📊 STATS CALCULATIONS */
+$roomsCount = mysqli_fetch_assoc(mysqli_query($conn,"SELECT COUNT(*) as total FROM rooms"))['total'];
 
-$totalRevenue = mysqli_fetch_assoc(
-mysqli_query($conn,"SELECT IFNULL(SUM(amount),0) AS total FROM payments")
-)['total'];
+// 1. Pending: Jo bilkul naye hain (NULL ya empty)
+$pendingQuery = mysqli_query($conn, "SELECT * FROM roombook WHERE stat IS NULL OR stat='' OR stat='not conform' ORDER BY id DESC");
 
-/* UPCOMING BOOKINGS */
-$upcoming = mysqli_fetch_assoc(
-mysqli_query($conn,"
-SELECT COUNT(*) AS total 
-FROM bookings 
-WHERE checkin >= CURDATE()
-")
-)['total'];
+// 2. Accepted but Unpaid: Jo accept ho gaye magar status 'Paid' nahi hua
+$acceptedUnpaidQuery = mysqli_query($conn, "SELECT * FROM roombook WHERE stat='Accepted' ORDER BY id DESC");
 
-/* RECENT BOOKINGS */
-$recent = mysqli_query($conn,"
-SELECT bookings.*, users.fullname, rooms.room_name
-FROM bookings
-JOIN users ON bookings.user_id = users.id
-JOIN rooms ON bookings.room_id = rooms.id
-ORDER BY bookings.id DESC
-LIMIT 5
-");
+// Counts for Cards
+$pendingCount = mysqli_num_rows($pendingQuery);
+$acceptedUnpaidCount = mysqli_num_rows($acceptedUnpaidQuery);
+
+// Revenue (Sirf confirmed payments)
+$revenueSql = "SELECT IFNULL(SUM((room_price + meal_price) * nodays),0) as total FROM roombook WHERE stat = 'Paid'";
+$revenueCount = mysqli_fetch_assoc(mysqli_query($conn, $revenueSql))['total'];
 ?>
 
 <!DOCTYPE html>
 <html>
 <head>
-<title>Admin Dashboard</title>
-
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<style>
-body{
-background:#f4f6f9;
-font-family:Arial;
-}
-
-/* SIDEBAR */
-.sidebar{
-height:100vh;
-background:#0d1b2a;
-padding:25px;
-color:white;
-position:fixed;
-width:230px;
-}
-
-.sidebar h3{
-color:#d4af37;
-margin-bottom:25px;
-font-weight:bold;
-}
-
-.sidebar a{
-display:block;
-padding:12px;
-color:white;
-text-decoration:none;
-margin-bottom:10px;
-border-radius:10px;
-transition:0.3s;
-}
-
-.sidebar a:hover{
-background:#d4af37;
-color:#000;
-}
-
-/* MAIN */
-.main{
-margin-left:230px;
-padding:30px;
-}
-
-/* CARD */
-.card-box{
-border:none;
-border-radius:18px;
-box-shadow:0 8px 18px rgba(0,0,0,.07);
-transition:0.3s;
-}
-
-.card-box:hover{
-transform:translateY(-6px);
-}
-
-.top-title{
-font-weight:bold;
-}
-
-.small{
-font-size:14px;
-color:gray;
-}
-
-.table td, .table th{
-vertical-align:middle;
-}
-
-.badge-status{
-padding:8px 12px;
-border-radius:20px;
-font-size:13px;
-}
-
-.green{
-background:#d1fae5;
-color:#065f46;
-}
-
-.orange{
-background:#fef3c7;
-color:#92400e;
-}
-
-.blue-box{
-background:linear-gradient(to right,#0d1b2a,#1f4068);
-color:white;
-border-radius:18px;
-}
-</style>
-
+    <title>Admin Dashboard | HotelIQ</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f4f6f9; font-family: 'Segoe UI', Arial; }
+        .sidebar { height:100vh; background:#0d1b2a; padding:25px; color:white; position:fixed; width:230px; }
+        .sidebar a { display:block; padding:12px; color:white; text-decoration:none; margin-bottom:10px; border-radius:10px; transition: 0.3s; }
+        .sidebar a:hover { background:#d4af37; color:black; }
+        .main { margin-left:230px; padding:30px; }
+        .stat-card { border:none; border-radius:15px; padding:20px; background:white; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .table-container { background: white; border-radius: 15px; padding: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 30px; }
+    </style>
 </head>
 <body>
 
-<!-- SIDEBAR -->
 <div class="sidebar">
-
-<h3>HotelIQ</h3>
-
-<a href="admin-dashboard.php">📊 Dashboard</a>
-<a href="reservations.php">📅 Reservations</a>
-<a href="manage-rooms.php">🏨 Manage Rooms</a>
-<a href="payments.php">💳 Payments</a>
-<a href="role-selection.php">🚪 Logout</a>
-
+    <h3 class="mb-4">HotelIQ</h3>
+    <a href="admin-dashboard.php" style="background:#d4af37; color:black;">📊 Dashboard</a>
+    <a href="reservations.php">📅 Reservations (Paid)</a>
+    <a href="manage-rooms.php">🏨 Manage Rooms</a>
+    <hr>
+    <a href="logout.php" class="text-danger">Logout</a>
 </div>
 
-<!-- MAIN CONTENT -->
 <div class="main">
+    <h2>Admin Control Panel</h2>
 
-<div class="d-flex justify-content-between align-items-center">
-<div>
-<h2 class="top-title">Welcome Admin 👋</h2>
-<p class="small">Manage your hotel system in real time</p>
-</div>
+    <div class="row g-3 mt-3">
+        <div class="col-md-4">
+            <div class="stat-card border-start border-warning border-4">
+                <small class="text-muted">New Requests (Pending)</small>
+                <h3 class="text-warning"><?php echo $pendingCount; ?></h3>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-card border-start border-primary border-4">
+                <small class="text-muted">Accepted (Awaiting Payment)</small>
+                <h3 class="text-primary"><?php echo $acceptedUnpaidCount; ?></h3>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-card bg-dark text-white">
+                <small class="text-secondary">Confirmed Revenue (Paid)</small>
+                <h3>Rs. <?php echo number_format($revenueCount); ?></h3>
+            </div>
+        </div>
+    </div>
 
-<div>
-<a href="manage-rooms.php" class="btn btn-warning">
-+ Add Room
-</a>
-</div>
-</div>
+    <div class="table-container mt-5">
+        <h5 class="mb-4 text-danger">Step 1: New Requests (Action Needed)</h5>
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Guest</th>
+                    <th>Room</th>
+                    <th>Check-In</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if($pendingCount > 0): ?>
+                    <?php while($row = mysqli_fetch_assoc($pendingQuery)): ?>
+                    <tr>
+                        <td><b><?php echo $row['FName']; ?></b></td>
+                        <td><?php echo $row['TRoom']; ?></td>
+                        <td><?php echo $row['cin']; ?></td>
+                        <td>
+                            <a href="?action=accept&id=<?php echo $row['id']; ?>" class="btn btn-success btn-sm">Accept</a>
+                            <a href="?action=reject&id=<?php echo $row['id']; ?>" class="btn btn-danger btn-sm">Reject</a>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr><td colspan="4" class="text-center text-muted">No new requests.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 
-<!-- TOP STATS -->
-<div class="row mt-4">
-
-<div class="col-md-3 mb-3">
-<div class="card card-box p-4 text-center">
-<p class="small">Total Users</p>
-<h2><?php echo $totalUsers; ?></h2>
-</div>
-</div>
-
-<div class="col-md-3 mb-3">
-<div class="card card-box p-4 text-center">
-<p class="small">Bookings</p>
-<h2><?php echo $totalBookings; ?></h2>
-</div>
-</div>
-
-<div class="col-md-3 mb-3">
-<div class="card card-box p-4 text-center">
-<p class="small">Rooms</p>
-<h2><?php echo $totalRooms; ?></h2>
-</div>
-</div>
-
-<div class="col-md-3 mb-3">
-<div class="card card-box p-4 text-center">
-<p class="small">Revenue</p>
-<h2>$<?php echo $totalRevenue; ?></h2>
-</div>
-</div>
-
-</div>
-
-<!-- SECOND ROW -->
-<div class="row">
-
-<div class="col-md-8 mb-4">
-
-<div class="card card-box p-4">
-
-<div class="d-flex justify-content-between">
-<h5>Recent Reservations</h5>
-<a href="reservations.php">View All</a>
-</div>
-
-<table class="table mt-3">
-
-<tr>
-<th>User</th>
-<th>Room</th>
-<th>Checkin</th>
-<th>Status</th>
-</tr>
-
-<?php while($row=mysqli_fetch_assoc($recent)){ ?>
-
-<tr>
-<td><?php echo $row['fullname']; ?></td>
-<td><?php echo $row['room_name']; ?></td>
-<td><?php echo $row['checkin']; ?></td>
-<td>
-<span class="badge-status green">
-<?php echo $row['status']; ?>
-</span>
-</td>
-</tr>
-
-<?php } ?>
-
-</table>
-
-</div>
-
-</div>
-
-<div class="col-md-4 mb-4">
-
-<div class="card blue-box p-4">
-
-<h5>Upcoming Check-ins</h5>
-<p class="small text-white">Bookings arriving soon</p>
-
-<h1 class="mt-3"><?php echo $upcoming; ?></h1>
-
-<a href="reservations.php" class="btn btn-light mt-3">
-Manage Bookings
-</a>
-
-</div>
-
-<br>
-
-<div class="card card-box p-4">
-
-<h5>Quick Actions</h5>
-
-<div class="mt-3 d-grid gap-2">
-
-<a href="manage-rooms.php" class="btn btn-outline-dark">
-Add New Room
-</a>
-
-<a href="reservations.php" class="btn btn-outline-warning">
-View Reservations
-</a>
-
-<a href="payments.php" class="btn btn-outline-success">
-Check Payments
-</a>
-
-</div>
-
-</div>
-
-</div>
-
-</div>
-
+    <div class="table-container">
+        <h5 class="mb-4 text-primary">Step 2: Accepted but Unpaid (Awaiting User Payment)</h5>
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Guest</th>
+                    <th>Room</th>
+                    <th>Total Price</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if($acceptedUnpaidCount > 0): ?>
+                    <?php while($row = mysqli_fetch_assoc($acceptedUnpaidQuery)): 
+                        $total = ($row['room_price'] + $row['meal_price']) * $row['nodays'];
+                    ?>
+                    <tr>
+                        <td><?php echo $row['FName']; ?></td>
+                        <td><?php echo $row['TRoom']; ?></td>
+                        <td>Rs. <?php echo number_format($total); ?></td>
+                        <td><span class="badge bg-info text-dark">Accepted - Unpaid</span></td>
+                    </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr><td colspan="4" class="text-center text-muted">No unpaid accepted bookings.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 </body>
